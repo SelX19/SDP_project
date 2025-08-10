@@ -25,6 +25,7 @@ Install requirements (example):
 """
 
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import json
 import logging
 from typing import Optional, Tuple
@@ -37,7 +38,7 @@ import pickle
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Rapidfuzz for fuzzy matching (fast)
+# Rapidfuzz for fuzzy matching - taking typos into consideration (fast)
 from rapidfuzz import fuzz
 
 # sentence-transformers for mBERT embeddings
@@ -50,8 +51,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("touristbot_backend")
 
 # ========== CONFIG ===========
-CSV_PATH = "tourism_dataset.csv"  # your dataset
-VECTORIZER_PKL = "vectorizer.pkl"  # optional: TF-IDF vectorizer from Colab
+CSV_PATH = "dataset_bot.csv"  
+VECTORIZER_PKL = "Vectorizer.pkl"  # TF-IDF vectorizer from Colab
 LR_PKL = "LR Model.pkl"
 RF_PKL = "RF Model.pkl"
 
@@ -59,7 +60,7 @@ RF_PKL = "RF Model.pkl"
 L1_TFIDF_THRESHOLD = 0.70    # cosine similarity threshold for dataset match
 L1_FUZZY_THRESHOLD = 70      # rapidfuzz token ratio threshold (0-100)
 L2_PROBA_THRESHOLD = 0.60    # min probability for L2 model to be confident
-L3_EMBED_THRESH = 0.55       # cosine threshold for sentence-transformers
+L3_EMBED_THRESH = 0.30       # cosine threshold for sentence-transformers / or change with 0.3/0.4
 
 # sentence-transformers model (semantic multilingual)
 MBERT_MODEL_NAME = "distiluse-base-multilingual-cased-v2"
@@ -79,16 +80,33 @@ mbert_embeddings = None  # torch tensors
 
 # ========== UTIL / LOADERS ===========
 
+# Language setting for backend processing
+LANG_MODE = "en"  # change to "bs" for Bosnian
+
 def load_dataset(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
         raise FileNotFoundError(f"Dataset not found at {path}")
-    df = pd.read_csv(path)
-    # Minimal expected columns
-    expected = ["question", "answer"]
-    for col in expected:
+    df = pd.read_csv(path, delimiter=';')
+
+    # Column mapping
+    if LANG_MODE == "en":
+        q_col, a_col = "Source text - Questions", "Source Text - Answers"
+    elif LANG_MODE == "bs":
+        q_col, a_col = "Bosnian translation - Questions", "Bosnian translation - Answers"
+    else:
+        raise ValueError(f"Unsupported LANG_MODE: {LANG_MODE}")
+
+    # Validate
+    for col in [q_col, a_col]:
         if col not in df.columns:
             raise ValueError(f"Dataset must contain column: '{col}'")
-    df = df.dropna(subset=["question", "answer"]).reset_index(drop=True)
+
+    # Keep only needed columns + reset index
+    df = df.dropna(subset=[q_col, a_col]).reset_index(drop=True)
+
+    # Rename to generic names so L1/L2 code still works
+    df = df.rename(columns={q_col: "question", a_col: "answer"})
+
     return df
 
 
@@ -134,7 +152,6 @@ def init_mbert_embeddings(df: pd.DataFrame):
         logger.exception("Failed to load or compute mBERT embeddings: %s", e)
         mbert_model = None
         mbert_embeddings = None
-
 
 # ========== LAYER 1: DATASET SEARCH (TF-IDF + fuzzy) ===========
 
@@ -346,4 +363,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.exception("Failed to init mBERT: %s", e)
 
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=80, debug=False)

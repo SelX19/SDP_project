@@ -57,7 +57,7 @@ export default function ChatScreen(props) { //props - object parameter that cont
                 setMessageText(""); //setting to empty space new messageText value, so that after clicking send, user can type in sth new and send again
                 setConversation([...getConversation()]); //wrapping output of one array into a new array
 
-                await makeChatRequest();
+                await makeChatRequest(messageText);
             }
             catch (error) {
                 console.log(error);
