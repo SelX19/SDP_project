@@ -34,6 +34,7 @@ from flask import Flask, request, jsonify
 import pandas as pd
 import numpy as np
 import pickle
+import requests
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -43,6 +44,20 @@ from rapidfuzz import fuzz
 
 # sentence-transformers for mBERT embeddings
 from sentence_transformers import SentenceTransformer, util
+
+#Google Translation API:
+from google.cloud import translate_v2 as translate
+from google.oauth2 import service_account
+
+credentials = service_account.Credentials.from_service_account_file(
+    "trans_API_key.json"
+)
+translate_client = translate.Client(credentials=credentials)
+
+from langdetect import detect, DetectorFactory
+
+# fix random seed for consistent results
+DetectorFactory.seed = 0
 
 # Optional: use joblib for faster sklearn model loading
 # from joblib import load
@@ -152,6 +167,35 @@ def init_mbert_embeddings(df: pd.DataFrame):
         logger.exception("Failed to load or compute mBERT embeddings: %s", e)
         mbert_model = None
         mbert_embeddings = None
+
+
+        ##translation##
+
+
+def translate_text(text: str, target_lang: str, source_lang: str = None) -> str:
+    """
+    Translate `text` to `target_lang` using Google Cloud Translation API.
+    If source_lang is provided, specify it; otherwise auto-detect.
+    """
+    try:
+        if source_lang:
+            result = translate_client.translate(
+                text, target_language=target_lang, source_language=source_lang
+            )
+        else:
+            result = translate_client.translate(text, target_language=target_lang)
+        return result["translatedText"]
+    except Exception as e:
+        logger.error(f"Google Translate API failed: {e}")
+        return text  # fallback: return original text if translation fails
+
+
+def detect_language(text: str) -> str:
+    try:
+        return detect(text)
+    except Exception as e:
+        logger.warning(f"Language detection failed: {e}")
+        return "en"  # fallback
 
 # ========== LAYER 1: DATASET SEARCH (TF-IDF + fuzzy) ===========
 
@@ -301,7 +345,6 @@ def health():
         "l3_ready": mbert_model is not None
     })
 
-
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json(force=True)
@@ -314,30 +357,47 @@ def chat():
 
     logger.info("Incoming query: %s", user_message)
 
-    # L1: dataset search
-    l1 = l1_search(user_message)
+    # Step 1: Detect input language
+    input_lang = detect_language(user_message)
+    logger.info(f"Detected language: {input_lang}")
+
+    # Step 2: Translate to English if needed
+    processing_message = user_message
+    if input_lang != "en":
+        processing_message = translate_text(user_message, "en", source_lang=input_lang)
+        logger.info(f"Translated to English for processing: {processing_message}")
+
+    # Step 3: L1 -> L2 -> L3 pipeline
+    l1 = l1_search(processing_message)
     if l1:
         answer, score = l1
         logger.info("L1 matched (score=%.3f). Returning dataset answer.", score)
-        return jsonify({"source": "dataset", "answer": answer, "score": score})
+    else:
+        l2 = l2_predict(processing_message)
+        if l2:
+            answer, score = l2
+            logger.info("L2 model provided answer (conf=%.3f).", score)
+        else:
+            l3 = l3_mbert_search(processing_message)
+            if l3:
+                answer, score = l3
+                logger.info("L3 mBERT matched (score=%.3f). Returning answer.", score)
+            else:
+                answer, score = None, 0
+                logger.info("No good match found in any layer.")
 
-    # L2: pretrained models
-    l2 = l2_predict(user_message)
-    if l2:
-        answer, conf = l2
-        logger.info("L2 model provided answer (conf=%.3f).", conf)
-        return jsonify({"source": "model", "answer": answer, "score": conf})
+    # Step 4: Translate answer back to original language if needed
+    final_answer = answer
+    if answer and input_lang != "en":
+        final_answer = translate_text(answer, input_lang, source_lang="en")
+        logger.info(f"Translated answer back to {input_lang}: {final_answer}")
 
-    # L3: mBERT semantic search
-    l3 = l3_mbert_search(user_message)
-    if l3:
-        answer, score = l3
-        logger.info("L3 mBERT matched (score=%.3f). Returning answer.", score)
-        return jsonify({"source": "mbert", "answer": answer, "score": score})
-
-    # Nothing found
-    logger.info("No good match found in any layer.")
-    return jsonify({"source": "none", "answer": None, "score": 0})
+    return jsonify({
+        "source": "dataset" if l1 else "model" if l2 else "mbert" if l3 else "none",
+        "answer": final_answer,
+        "score": score,
+        "detected_lang": input_lang
+    })
 
 
 # ========== BOOTSTRAP ===========
@@ -364,3 +424,5 @@ if __name__ == "__main__":
         logger.exception("Failed to init mBERT: %s", e)
 
     app.run(host="0.0.0.0", port=80, debug=False)
+
+
