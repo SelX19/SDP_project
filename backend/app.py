@@ -49,10 +49,14 @@ from sentence_transformers import SentenceTransformer, util
 from google.cloud import translate_v2 as translate
 from google.oauth2 import service_account
 
-credentials = service_account.Credentials.from_service_account_file(
-    "trans_API_key.json"
-)
-translate_client = translate.Client(credentials=credentials)
+translate_client = None
+
+def get_translate_client():
+    global translate_client
+    if translate_client is None:
+        credentials = service_account.Credentials.from_service_account_file("trans_API_key.json")
+        translate_client = translate.Client(credentials=credentials)
+    return translate_client
 
 from langdetect import detect, DetectorFactory
 
@@ -177,18 +181,18 @@ def translate_text(text: str, target_lang: str, source_lang: str = None) -> str:
     Translate `text` to `target_lang` using Google Cloud Translation API.
     If source_lang is provided, specify it; otherwise auto-detect.
     """
+    client = get_translate_client()
     try:
         if source_lang:
-            result = translate_client.translate(
+            result = client.translate(
                 text, target_language=target_lang, source_language=source_lang
             )
         else:
-            result = translate_client.translate(text, target_language=target_lang)
+            result = client.translate(text, target_language=target_lang)
         return result["translatedText"]
     except Exception as e:
         logger.error(f"Google Translate API failed: {e}")
         return text  # fallback: return original text if translation fails
-
 
 def detect_language(text: str) -> str:
     try:
