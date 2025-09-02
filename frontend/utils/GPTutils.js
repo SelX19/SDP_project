@@ -6,12 +6,11 @@ export const makeChatRequest = async (message) => {
     let backendUrl = "";
 
     if (Platform.OS === "android") {
-        backendUrl = "http://10.0.2.2:80/chat";
-    } else if (Platform.OS === "ios") {
-        backendUrl = "http://127.0.0.1:80/chat";
+        backendUrl = "http://10.0.2.2:80/chat";  // works for emulator
     } else {
-        backendUrl = "http://192.168.0.24:80/chat";  // replace with your PC's local IP
+        backendUrl = "http://192.168.0.24:80/chat";  // use LAN IP for iOS simulator + real device
     }
+
 
     const response = await fetch(backendUrl, {
         method: "POST",
