@@ -10,9 +10,10 @@ import { HeaderButtons, Item } from 'react-navigation-header-buttons';
 import CustomHeaderButton from '../components/CustomHeaderButton';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import InputContainer from '../components/inputContainer';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 
-export default function ImageScreen(props) { //props - object parameter that contains all properties passed to screen, including navigation - also on a screen 
+export default function ChatScreen(props) { //props - object parameter that contains all properties passed to screen, including navigation - also on a screen 
 
     const flatlist = useRef();
 
@@ -57,7 +58,7 @@ export default function ImageScreen(props) { //props - object parameter that con
                 setMessageText(""); //setting to empty space new messageText value, so that after clicking send, user can type in sth new and send again
                 setConversation([...getConversation()]); //wrapping output of one array into a new array
 
-                await makeChatRequest();
+                await makeChatRequest(messageText);
             }
             catch (error) {
                 console.log(error);
@@ -79,9 +80,9 @@ export default function ImageScreen(props) { //props - object parameter that con
                         //view shows when there are no msgs yet (conversation length = 0), and when nothing is been loading
                         !loading && conversation.length === 0 &&
                         <View style={styles.emptyContainer}>
-                            <MaterialCommunityIcons name="lightbulb-multiple-outline" size={46} color={colors.lightGrey} />
+                            <MaterialIcons name="add-photo-alternate" size={46} color={colors.lightGrey} />
                             <Text style={styles.emptyContainerText}>
-                                Type a message to get started
+                                Upload a photo
                             </Text>
                         </View>
 
@@ -125,7 +126,7 @@ export default function ImageScreen(props) { //props - object parameter that con
                     onChangeText={(text) => setMessageText(text)}
                     value={messageText}
                     onPress={sendMessage}
-                    placeholder="Describe an image to be generated!"
+                    placeholder="Ask about the uploaded photo!"
                     placeholderTextColor={colors.lightGrey}
                 />
 
@@ -167,3 +168,4 @@ const styles = StyleSheet.create({
         fontFamily: 'regular'
     }
 });
+

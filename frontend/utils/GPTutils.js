@@ -11,6 +11,7 @@ export const makeChatRequest = async (message) => {
         backendUrl = "http://192.168.0.24:80/chat";  // use LAN IP for iOS simulator + real device
     }
 
+    //or: const backendUrl = "https://80b3348d4f71.ngrok-free.app/chat";
 
     const response = await fetch(backendUrl, {
         method: "POST",
